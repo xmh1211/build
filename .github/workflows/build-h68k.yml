@@ -103,7 +103,8 @@ jobs:
           curl \
           zip \
           unzip \
-          aria2
+          aria2 \
+          software-properties-common
     
     - name: 克隆 Armbian 构建系统
       run: |
