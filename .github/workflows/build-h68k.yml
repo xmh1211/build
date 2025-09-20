@@ -28,7 +28,7 @@ on:
         description: '发行版 (如: bookworm, bullseye, buster, focal, jammy, noble, oracular, plucky, sid, trixie)'
         options:
           - bookworm
-          - bullseye  # 修正了拼写错误
+          - bullseye
           - buster
           - focal
           - jammy
@@ -107,18 +107,53 @@ jobs:
     
     - name: 克隆 Armbian 构建系统
       run: |
-        git clone --depth 1 https://github.com/armbian/build.git armbian-build
-        cd armbian-build
+        git clone --single-branch --depth=1 --branch=main https://github.com/armbian/build.git build
+        
+    - name: 创建并配置 myapps.yaml
+      run: |
+        cd build
+        mkdir -p userpatches
+        cat > userpatches/myapps.yaml << 'EOF'
+        extensions:
+          - name: packages.add
+            config:
+              packages:
+                - apt-transport-https
+                - ca-certificates
+                - curl
+                        - gnupg
+                        - lsb-release
+                        - pciutils
+                        - net-tools
+                        - iperf3
+                        - zip
+                        - unzip
+                        - ntpdate
+                        - iputils-ping
+                        - vim
+                        - iftop
+                        - iotop
+                        - mtr
+                        - wget
+                        - sudo
+                        - qrencode
+                        - python3
+                        - python3-pip
+                        - python3-venv
+                        - lxc
+                        - lxc-templates
+                        - bridge-utils
+        EOF
         
     - name: 准备配置文件 (如果存在)
       run: |
-        if [ -d "../config" ]; then
-          cp -r ../config/* armbian-build/config/
+        if [ -d "config" ]; then
+          cp -r config/* build/config/
         fi
         
     - name: 设置构建参数
       run: |
-        cd armbian-build
+        cd build
         # 设置构建参数，使用正确的默认值
         echo "BOARD=${{ github.event.inputs.board || 'hinlink-h68k' }}" >> $GITHUB_ENV
         echo "BRANCH=${{ github.event.inputs.branch || 'current' }}" >> $GITHUB_ENV
@@ -129,7 +164,7 @@ jobs:
         
     - name: 编译 Armbian
       run: |
-        cd armbian-build
+        cd build
         # 开始编译，使用新的命令格式
         ./compile.sh build \
           BOARD=${{ env.BOARD }} \
@@ -145,10 +180,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}
-        path: armbian-build/output/images/
+        path: build/output/images/
         
     - name: 清理缓存 (可选)
       if: always()
       run: |
-        sudo rm -rf armbian-build/cache
-        sudo rm -rf armbian-build/output/debs
+        sudo rm -rf build/cache
+        sudo rm -rf build/output/debs
