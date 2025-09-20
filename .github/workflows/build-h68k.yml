@@ -144,6 +144,7 @@ jobs:
                         - lxc-templates
                         - bridge-utils
         EOF
+        chmod 775 userpatches/myapps.yaml
         
     - name: 准备配置文件 (如果存在)
       run: |
