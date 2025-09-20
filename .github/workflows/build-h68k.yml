@@ -1,154 +1,94 @@
-name: Build Armbian Customize Board
-  
-on:  
-  workflow_dispatch:  
-    inputs:  
-      BOARD:  
-        description: 'Board type'  
-        required: true 
-        default: 'tpm312'
-        type: choice
-        options:
-        - hinlink-h28k
-        - hinlink-h66k
-        - hinlink-h68k
-        - hinlink-h88k
-        - hinlink-hnas
-        - hinlink-ht2
-      BRANCH:  
-        description: 'Armbian branch'  
-        default: 'current'  
-        required: false 
-        type: choice 
-        options:
-          - stable
-          - current
-          - edge
-      RELEASE:  
-        description: 'Release name' 
-        default: 'bookworm'
-        required: true  
-        type: choice
-        options:
-          - jammy
-          - bookworm
-          - noble
-          - bullseye
-          - trixie
-      Version:
-        description: 'Armbian Version'
-        default: 'main'
-        required: false 
-        type: choice
-        options: 
-          - main
-          - v25.02
-          - v24.11
-          - v24.08
-      BUILD_DESKTOP:  
-        description: 'Build desktop environment'  
-        default: 'no'  
-        required: false  
-        type: choice
-        options:
-          - no
-      COMPRESS_OUTPUTIMAGE:  
-        description: 'Compress output image'  
-        default: 'sha,xz'  
-        required: false  
-        type: string  
-      BOOT_LOGO:  
-        description: 'Include boot logo'  
-        default: 'yes'  
-        required: false  
-        type: choice 
-        options:
-          - yes
-          - no
+name: Build Armbian
+
+on:
+  workflow_dispatch:  # 允许手动触发
+    inputs:
+      board:
+        description: '开发板型号 (如: orangepizero, rock64)'
+        required: true
+        default: 'hinlink-h68k'
+      branch:
+        description: 'Armbian 分支 (如: current, legacy)'
+        required: true
+        default: 'current'
+      release:
+        description: '发行版 (如: jammy, bullseye)'
+        required: true
+        default: 'trixie'
+  push:
+    branches: [ main ]
+    paths: 
+      - 'config/**'  # 当配置文件变更时触发
+
 env:
-  TZ: America/New_York
-  
-jobs:  
-  build-armbian:  
-    runs-on: ubuntu-22.04  
-    steps:  
-      - name: Checkout  
-        uses: actions/checkout@v3  
+  BUILD_ARGS: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04  # 使用 Ubuntu 22.04 作为构建环境
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
       
-      - name: Initialization environment
-        id: init
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          # 清理 Docker 镜像和软件缓存
-          docker_images_ids=$(docker images -q)
-          if [ -n "$docker_images_ids" ]; then
-            docker rmi $docker_images_ids
-          fi
-          docker image prune -a -f
-          sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* openjdk* mysql* php* mongodb* dotnet* moby* snapd* android* || true
-          sudo -E apt-get -qq autoremove --purge
-          sudo -E apt-get -qq clean
-          
-          # 安装兼容的 Python 依赖
-          sudo -E apt-get install -y python3-distutils python3-pip python3-setuptools
-          
-          # 设置时区并创建工作目录
-          sudo timedatectl set-timezone "${TZ}"
-          sudo mkdir -p /mnt/workdir
-          sudo chown $USER:$GROUPS /mnt/workdir
-          df -Th
-  
-      - name: Download source code
-        working-directory: /mnt/workdir
-        run: |
-          df -hT ${PWD}
-          git clone -q --single-branch --depth=1 --branch=${{ github.event.inputs.Version }} https://github.com/armbian/build.git build 
-          ln -sf /mnt/workdir/build $GITHUB_WORKSPACE/build
-
-          cd build/
-          # 复制 config 和 userpatches 目录文件    
-          cp -rf ${{ github.workspace }}/addboard/config/* config
-          mkdir -p userpatches
-          cp -rf ${{ github.workspace }}/addboard/userpatches/* userpatches
-          ls -la
-  
-      - name: Compile Armbian [ ${{ inputs.BOARD }} ${{ inputs.RELEASE }} ] 
-        run: |  
-          cd /mnt/workdir/build/ 
-          ./compile.sh BOARD=${{ inputs.BOARD }} RELEASE=${{ inputs.RELEASE }} BRANCH=${{ inputs.BRANCH }} BUILD_MINIMAL=no BUILD_DESKTOP=${{ inputs.BUILD_DESKTOP }} \
-                           KERNEL_CONFIGURE=no COMPRESS_OUTPUTIMAGE=${{ inputs.COMPRESS_OUTPUTIMAGE }} BOOT_LOGO=${{ inputs.BOOT_LOGO }} 
-          
-      - name: Set current year and month  
-        run: |  
-          echo "CURRENT_YEAR_MONTH=$(date +'%Y%m')" >> $GITHUB_ENV  
-
-      - name: Prepare Release Metadata
-        run: |  
-          # 提取版本号
-          # latest_image=$(ls ${{ github.workspace }}/build/output/images/Armbian-unofficial_*.img.xz | grep -oE 'Armbian-unofficial_[0-9.]+_.*' | sort -V | tail -n 1) 
-          latest_image=$(ls ${{ github.workspace }}/build/output/images/Armbian-unofficial_*.img.xz | sort -V | tail -n 1)
-          version=$(echo "$latest_image" | cut -d'_' -f2)  
-  
-          # 将版本号设置为环境变量  
-          echo "VERSION=$version" >> $GITHUB_ENV
+    - name: 安装依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          build-essential \
+          flex \
+          bison \
+          libssl-dev \
+          libncurses5-dev \
+          rsync \
+          python3 \
+          device-tree-compiler \
+          u-boot-tools \
+          parted \
+          debootstrap \
+          dosfstools \
+          qemu-user-static \
+          bc
+    
+    - name: 克隆 Armbian 构建系统
+      run: |
+        git clone --depth 1 https://github.com/armbian/build.git armbian-build
+        cd armbian-build
         
-      - name: Upload image to Release  
-        if: success() 
-        uses: ncipollo/release-action@main
-        with:  
-          tag: "Armbian_${{ github.event.inputs.Version }}_${{ github.event.inputs.RELEASE }}_${{ env.CURRENT_YEAR_MONTH }}"  
-          name: "Armbian_${{ github.event.inputs.Version }}_${{ github.event.inputs.RELEASE }}_${{ env.CURRENT_YEAR_MONTH }}"  
-          artifacts: "${{ github.workspace }}/build/output/images/*"  
-          allowUpdates: true 
-          removeArtifacts: false 
-          replacesArtifacts: true 
-          token: ${{ secrets.GITHUB_TOKEN }}  
-          body: |  
-            ### Armbian Image Information  
-            - Release: ${{ github.event.inputs.RELEASE }}    
-            - Version: ${{ env.VERSION }}  
-            ### Armbian Image Verification  
-            - sha256sum   
-          draft: false  
-          prerelease: false  
+    - name: 准备配置文件 (如果存在)
+      run: |
+        if [ -d "../config" ]; then
+          cp -r ../config/* armbian-build/config/
+        fi
+        
+    - name: 编译 Armbian
+      run: |
+        cd armbian-build
+        # 设置构建参数
+        echo "BOARD=${{ github.event.inputs.board || 'orangepizero' }}" >> $GITHUB_ENV
+        echo "BRANCH=${{ github.event.inputs.branch || 'current' }}" >> $GITHUB_ENV
+        echo "RELEASE=${{ github.event.inputs.release || 'bullseye' }}" >> $GITHUB_ENV
+        
+        # 开始编译
+        ./compile.sh \
+          BOARD=${{ env.BOARD }} \
+          BRANCH=${{ env.BRANCH }} \
+          RELEASE=${{ env.RELEASE }} \
+          BUILD_MINIMAL=no \
+          BUILD_DESKTOP=no \
+          KERNEL_ONLY=no \
+          KERNEL_CONFIGURE=no \
+          ${{ env.BUILD_ARGS }}
+          
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: armbian-images
+        path: armbian-build/output/images/
+        
+    - name: 清理缓存 (可选)
+      if: always()
+      run: |
+        sudo rm -rf armbian-build/cache
+        sudo rm -rf armbian-build/output/debs
