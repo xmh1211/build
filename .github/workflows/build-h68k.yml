@@ -4,17 +4,49 @@ on:
   workflow_dispatch:  # 允许手动触发
     inputs:
       board:
-        description: '开发板型号 (如: orangepizero, rock64)'
+        description: '开发板型号 (如: orangepizero, rock64, hinlink-h68k)'
         required: true
-        default: 'hinlink-h68k'
+        default: 'orangepizero'
       branch:
         description: 'Armbian 分支 (如: current, legacy)'
         required: true
         default: 'current'
       release:
-        description: '发行版 (如: jammy, bullseye)'
+        description: '发行版 (如: jammy, bullseye, trixie)'
         required: true
-        default: 'trixie'
+        default: 'bullseye'
+      build_desktop:
+        description: '是否构建桌面版 (yes/no)'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+      build_minimal:
+        description: '是否构建最小化系统 (yes/no)'
+        required: true
+        default: 'yes'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+      kernel_configure:
+        description: '是否配置内核 (yes/no)'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+      kernel_only:
+        description: '是否仅编译内核 (yes/no)'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
   push:
     branches: [ main ]
     paths: 
@@ -26,6 +58,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04  # 使用 Ubuntu 22.04 作为构建环境
+    timeout-minutes: 240   # 设置超时时间，编译可能需要很长时间
     
     steps:
     - name: 检出代码
@@ -49,7 +82,11 @@ jobs:
           debootstrap \
           dosfstools \
           qemu-user-static \
-          bc
+          bc \
+          curl \
+          zip \
+          unzip \
+          aria2
     
     - name: 克隆 Armbian 构建系统
       run: |
@@ -62,29 +99,36 @@ jobs:
           cp -r ../config/* armbian-build/config/
         fi
         
-    - name: 编译 Armbian
+    - name: 设置构建参数
       run: |
         cd armbian-build
         # 设置构建参数
         echo "BOARD=${{ github.event.inputs.board || 'orangepizero' }}" >> $GITHUB_ENV
         echo "BRANCH=${{ github.event.inputs.branch || 'current' }}" >> $GITHUB_ENV
         echo "RELEASE=${{ github.event.inputs.release || 'bullseye' }}" >> $GITHUB_ENV
+        echo "BUILD_DESKTOP=${{ github.event.inputs.build_desktop || 'no' }}" >> $GITHUB_ENV
+        echo "BUILD_MINIMAL=${{ github.event.inputs.build_minimal || 'yes' }}" >> $GITHUB_ENV
+        echo "KERNEL_CONFIGURE=${{ github.event.inputs.kernel_configure || 'no' }}" >> $GITHUB_ENV
+        echo "KERNEL_ONLY=${{ github.event.inputs.kernel_only || 'no' }}" >> $GITHUB_ENV
         
+    - name: 编译 Armbian
+      run: |
+        cd armbian-build
         # 开始编译
         ./compile.sh \
           BOARD=${{ env.BOARD }} \
           BRANCH=${{ env.BRANCH }} \
           RELEASE=${{ env.RELEASE }} \
-          BUILD_MINIMAL=no \
-          BUILD_DESKTOP=no \
-          KERNEL_ONLY=no \
-          KERNEL_CONFIGURE=no \
+          BUILD_DESKTOP=${{ env.BUILD_DESKTOP }} \
+          BUILD_MINIMAL=${{ env.BUILD_MINIMAL }} \
+          KERNEL_CONFIGURE=${{ env.KERNEL_CONFIGURE }} \
+          KERNEL_ONLY=${{ env.KERNEL_ONLY }} \
           ${{ env.BUILD_ARGS }}
           
     - name: 上传构建产物
       uses: actions/upload-artifact@v4
       with:
-        name: armbian-images
+        name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}
         path: armbian-build/output/images/
         
     - name: 清理缓存 (可选)
