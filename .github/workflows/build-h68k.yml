@@ -4,17 +4,17 @@ on:
   workflow_dispatch:  # 允许手动触发
     inputs:
       board:
-        description: '开发板型号 (如: orangepizero, rock64, hinlink-h68k)'
+        description: '开发板型号 (hinlink-h68k)'
         required: true
-        default: 'orangepizero'
+        default: 'hinlink-h68k'
       branch:
-        description: 'Armbian 分支 (如: current, legacy)'
+        description: 'Armbian 分支 (如: current, edge)'
         required: true
         default: 'current'
       release:
-        description: '发行版 (如: jammy, bullseye, trixie)'
+        description: '发行版 (如: bookworm, bullsseye, buster, focal, jammy, noble, oracular, plucky, sid, trixie)'
         required: true
-        default: 'bullseye'
+        default: 'trixie'
       build_desktop:
         description: '是否构建桌面版 (yes/no)'
         required: true
