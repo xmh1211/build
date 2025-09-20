@@ -113,6 +113,7 @@ jobs:
           BUILD_DESKTOP=${{ env.BUILD_DESKTOP }} \
           BUILD_MINIMAL=${{ env.BUILD_MINIMAL }} \
           KERNEL_CONFIGURE=${{ env.KERNEL_CONFIGURE }} \
+          SHOW_DEBUG=no \
           ${{ env.BUILD_ARGS }}
           
     - name: 上传构建产物
