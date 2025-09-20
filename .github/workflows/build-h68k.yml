@@ -39,14 +39,6 @@ on:
         options:
           - 'yes'
           - 'no'
-      kernel_only:
-        description: '是否仅编译内核 (yes/no)'
-        required: true
-        default: 'no'
-        type: choice
-        options:
-          - 'yes'
-          - 'no'
   push:
     branches: [ main ]
     paths: 
@@ -109,20 +101,18 @@ jobs:
         echo "BUILD_DESKTOP=${{ github.event.inputs.build_desktop || 'no' }}" >> $GITHUB_ENV
         echo "BUILD_MINIMAL=${{ github.event.inputs.build_minimal || 'yes' }}" >> $GITHUB_ENV
         echo "KERNEL_CONFIGURE=${{ github.event.inputs.kernel_configure || 'no' }}" >> $GITHUB_ENV
-        echo "KERNEL_ONLY=${{ github.event.inputs.kernel_only || 'no' }}" >> $GITHUB_ENV
         
     - name: 编译 Armbian
       run: |
         cd armbian-build
-        # 开始编译
-        ./compile.sh \
+        # 开始编译，使用新的命令格式
+        ./compile.sh build \
           BOARD=${{ env.BOARD }} \
           BRANCH=${{ env.BRANCH }} \
           RELEASE=${{ env.RELEASE }} \
           BUILD_DESKTOP=${{ env.BUILD_DESKTOP }} \
           BUILD_MINIMAL=${{ env.BUILD_MINIMAL }} \
           KERNEL_CONFIGURE=${{ env.KERNEL_CONFIGURE }} \
-          KERNEL_ONLY=${{ env.KERNEL_ONLY }} \
           ${{ env.BUILD_ARGS }}
           
     - name: 上传构建产物
