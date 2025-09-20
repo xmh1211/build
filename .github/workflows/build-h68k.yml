@@ -1,0 +1,153 @@
+name: Build Armbian
+
+on:
+  workflow_dispatch:  # 允许手动触发
+    inputs:
+      board:
+        type: choice
+        description: '开发板型号 (hinlink-h68k)'
+        options:
+        required: true
+        - hinlink-h28k
+        - hinlink-h66k
+        - hinlink-h68k
+        - hinlink-h88k
+        - hinlink-hnas
+        - hinlink-ht2
+        default: 'hinlink-h68k'
+      branch:
+        type: choice
+        description: 'Armbian 分支 (如: current, edge)'
+        options:
+        - current
+        - edge
+        required: true
+        default: 'current'
+      release:
+        type: choice
+        description: '发行版 (如: bookworm, bullsseye, buster, focal, jammy, noble, oracular, plucky, sid, trixie)'
+        - bookworm
+        - bullsseye
+        - buster
+        - buster
+        - focal
+        - jammy
+        - noble
+        - oracular
+        - plucky
+        - sid
+        - trixie
+        required: true
+        default: 'trixie'
+      build_desktop:
+        description: '是否构建桌面版 (yes/no)'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+      build_minimal:
+        description: '是否构建最小化系统 (yes/no)'
+        required: true
+        default: 'yes'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+      kernel_configure:
+        description: '是否配置内核 (yes/no)'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+  push:
+    branches: [ main ]
+    paths: 
+      - 'config/**'  # 当配置文件变更时触发
+
+env:
+  BUILD_ARGS: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04  # 使用 Ubuntu 22.04 作为构建环境
+    timeout-minutes: 240   # 设置超时时间，编译可能需要很长时间
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 安装依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          build-essential \
+          flex \
+          bison \
+          libssl-dev \
+          libncurses5-dev \
+          rsync \
+          python3 \
+          device-tree-compiler \
+          u-boot-tools \
+          parted \
+          debootstrap \
+          dosfstools \
+          qemu-user-static \
+          bc \
+          curl \
+          zip \
+          unzip \
+          aria2
+    
+    - name: 克隆 Armbian 构建系统
+      run: |
+        git clone --depth 1 https://github.com/armbian/build.git armbian-build
+        cd armbian-build
+        
+    - name: 准备配置文件 (如果存在)
+      run: |
+        if [ -d "../config" ]; then
+          cp -r ../config/* armbian-build/config/
+        fi
+        
+    - name: 设置构建参数
+      run: |
+        cd armbian-build
+        # 设置构建参数
+        echo "BOARD=${{ github.event.inputs.board || 'orangepizero' }}" >> $GITHUB_ENV
+        echo "BRANCH=${{ github.event.inputs.branch || 'current' }}" >> $GITHUB_ENV
+        echo "RELEASE=${{ github.event.inputs.release || 'bullseye' }}" >> $GITHUB_ENV
+        echo "BUILD_DESKTOP=${{ github.event.inputs.build_desktop || 'no' }}" >> $GITHUB_ENV
+        echo "BUILD_MINIMAL=${{ github.event.inputs.build_minimal || 'yes' }}" >> $GITHUB_ENV
+        echo "KERNEL_CONFIGURE=${{ github.event.inputs.kernel_configure || 'no' }}" >> $GITHUB_ENV
+        
+    - name: 编译 Armbian
+      run: |
+        cd armbian-build
+        # 开始编译，使用新的命令格式
+        ./compile.sh build \
+          BOARD=${{ env.BOARD }} \
+          BRANCH=${{ env.BRANCH }} \
+          RELEASE=${{ env.RELEASE }} \
+          BUILD_DESKTOP=${{ env.BUILD_DESKTOP }} \
+          BUILD_MINIMAL=${{ env.BUILD_MINIMAL }} \
+          KERNEL_CONFIGURE=${{ env.KERNEL_CONFIGURE }} \
+          SHOW_DEBUG=no \
+          ${{ env.BUILD_ARGS }}
+          
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}
+        path: armbian-build/output/images/
+        
+    - name: 清理缓存 (可选)
+      if: always()
+      run: |
+        sudo rm -rf armbian-build/cache
+        sudo rm -rf armbian-build/output/debs
