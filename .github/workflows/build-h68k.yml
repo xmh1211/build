@@ -1,68 +1,68 @@
 name: Build Armbian
 
 on:
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
     inputs:
       board:
         type: choice
         description: '开发板型号 (hinlink-h68k)'
         options:
+          - hinlink-h28k
+          - hinlink-h66k
+          - hinlink-h68k
+          - hinlink-h88k
+          - hinlink-hnas
+          - hinlink-ht2
         required: true
-        - hinlink-h28k
-        - hinlink-h66k
-        - hinlink-h68k
-        - hinlink-h88k
-        - hinlink-hnas
-        - hinlink-ht2
         default: 'hinlink-h68k'
       branch:
         type: choice
         description: 'Armbian 分支 (如: current, edge)'
         options:
-        - current
-        - edge
+          - current
+          - edge
         required: true
         default: 'current'
       release:
         type: choice
-        description: '发行版 (如: bookworm, bullsseye, buster, focal, jammy, noble, oracular, plucky, sid, trixie)'
-        - bookworm
-        - bullsseye
-        - buster
-        - buster
-        - focal
-        - jammy
-        - noble
-        - oracular
-        - plucky
-        - sid
-        - trixie
+        description: '发行版 (如: bookworm, bullseye, buster, focal, jammy, noble, oracular, plucky, sid, trixie)'
+        options:
+          - bookworm
+          - bullseye  # 修正了拼写错误
+          - buster
+          - focal
+          - jammy
+          - noble
+          - oracular
+          - plucky
+          - sid
+          - trixie
         required: true
         default: 'trixie'
       build_desktop:
-        description: '是否构建桌面版 (yes/no)'
-        required: true
-        default: 'no'
         type: choice
+        description: '是否构建桌面版 (yes/no)'
         options:
           - 'yes'
           - 'no'
+        required: true
+        default: 'no'
       build_minimal:
+        type: choice
         description: '是否构建最小化系统 (yes/no)'
+        options:
+          - 'yes'
+          - 'no'
         required: true
         default: 'yes'
+      kernel_configure:
         type: choice
+        description: '是否配置内核 (yes/no)'
         options:
           - 'yes'
           - 'no'
-      kernel_configure:
-        description: '是否配置内核 (yes/no)'
         required: true
         default: 'no'
-        type: choice
-        options:
-          - 'yes'
-          - 'no'
   push:
     branches: [ main ]
     paths: 
@@ -118,10 +118,10 @@ jobs:
     - name: 设置构建参数
       run: |
         cd armbian-build
-        # 设置构建参数
-        echo "BOARD=${{ github.event.inputs.board || 'orangepizero' }}" >> $GITHUB_ENV
+        # 设置构建参数，使用正确的默认值
+        echo "BOARD=${{ github.event.inputs.board || 'hinlink-h68k' }}" >> $GITHUB_ENV
         echo "BRANCH=${{ github.event.inputs.branch || 'current' }}" >> $GITHUB_ENV
-        echo "RELEASE=${{ github.event.inputs.release || 'bullseye' }}" >> $GITHUB_ENV
+        echo "RELEASE=${{ github.event.inputs.release || 'trixie' }}" >> $GITHUB_ENV
         echo "BUILD_DESKTOP=${{ github.event.inputs.build_desktop || 'no' }}" >> $GITHUB_ENV
         echo "BUILD_MINIMAL=${{ github.event.inputs.build_minimal || 'yes' }}" >> $GITHUB_ENV
         echo "KERNEL_CONFIGURE=${{ github.event.inputs.kernel_configure || 'no' }}" >> $GITHUB_ENV
