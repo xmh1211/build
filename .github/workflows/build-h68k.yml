@@ -116,10 +116,16 @@ jobs:
         mkdir -p userpatches
         cat > userpatches/customize-image.sh << 'EOF'
         #!/bin/bash
+        
         echo "开始自定义系统镜像..."
-        # 安装额外软件包
-        sudo apt-get update
-        sudo apt-get install -y \
+        # 修复 sudo: unable to resolve host 错误
+        echo "127.0.0.1 $(cat /etc/hostname)" >> /etc/hosts
+
+        # 安装额外软件包 - 不需要使用 sudo，因为脚本以 root 权限运行
+        apt-get update
+        
+        # 基础工具
+        apt-get install -y \
           curl \
           gnupg \
           lsb-release \
@@ -128,23 +134,40 @@ jobs:
           iperf3 \
           zip \
           unzip \
-          ntpdate \
           iputils-ping \
           vim \
           iftop \
           iotop \
           mtr \
           wget \
-          sudo \
           qrencode \
           python3 \
           python3-pip \
-          python3-venv \
-          lxc \
-          lxc-templates \
-          bridge-utils \
+          python3-venv
+          
+        # 检查并安装可用的网络时间协议工具
+        if apt-cache show ntpdate >/dev/null 2>&1; then
+            apt-get install -y ntpdate
+        elif apt-cache show ntpsec-ntpdate >/dev/null 2>&1; then
+            apt-get install -y ntpsec-ntpdate
+        fi
+        
+        # 检查并安装容器相关工具
+        if apt-cache show lxc >/dev/null 2>&1; then
+            apt-get install -y \
+              lxc \
+              lxc-templates \
+              bridge-utils
+        fi
+        
+        # sudo 通常已经安装，但确认一下
+        if ! command -v sudo >/dev/null 2>&1; then
+            apt-get install -y sudo
+        fi
+        
         echo "系统自定义完成。"
         EOF
+        
         chmod +x userpatches/customize-image.sh
 
     - name: 准备配置文件 (如果存在)
