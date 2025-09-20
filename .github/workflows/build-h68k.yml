@@ -4,15 +4,39 @@ on:
   workflow_dispatch:  # 允许手动触发
     inputs:
       board:
+        type: choice
         description: '开发板型号 (hinlink-h68k)'
+        options:
         required: true
+        - hinlink-h28k
+        - hinlink-h66k
+        - hinlink-h68k
+        - hinlink-h88k
+        - hinlink-hnas
+        - hinlink-ht2
         default: 'hinlink-h68k'
       branch:
+        type: choice
         description: 'Armbian 分支 (如: current, edge)'
+        options:
+        - current
+        - edge
         required: true
         default: 'current'
       release:
+        type: choice
         description: '发行版 (如: bookworm, bullsseye, buster, focal, jammy, noble, oracular, plucky, sid, trixie)'
+        - bookworm
+        - bullsseye
+        - buster
+        - buster
+        - focal
+        - jammy
+        - noble
+        - oracular
+        - plucky
+        - sid
+        - trixie
         required: true
         default: 'trixie'
       build_desktop:
