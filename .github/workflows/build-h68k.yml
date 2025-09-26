@@ -82,99 +82,15 @@ jobs:
       
     - name: 安装依赖
       run: |
-        sudo apt-get update
+        sudo apt update -y
+        sudo apt full-upgrade -y
         sudo apt install $(curl -fsSL https://is.gd/depend_ubuntu2204_armbian)
-        sudo apt-get install -y \
-          git \
-          build-essential \
-          flex \
-          bison \
-          libssl-dev \
-          libncurses5-dev \
-          rsync \
-          python3 \
-          device-tree-compiler \
-          u-boot-tools \
-          parted \
-          debootstrap \
-          dosfstools \
-          qemu-user-static \
-          bc \
-          curl \
-          zip \
-          unzip \
-          aria2 \
-          software-properties-common
+        sudo apt autoremove --purge
+        sudo apt clean
     
     - name: 克隆 Armbian 构建系统
       run: |
         git clone --single-branch --depth=1 --branch=main https://github.com/armbian/build.git build
-        
-    - name: 创建并配置自定义软件包
-      run: |
-        cd build
-        mkdir -p userpatches
-        cat > userpatches/customize-image.sh << 'EOF'
-        #!/bin/bash
-        
-        echo "开始自定义系统镜像..."
-        # 修复 sudo: unable to resolve host 错误
-        echo "127.0.0.1 $(cat /etc/hostname)" >> /etc/hosts
-
-        # 安装额外软件包 - 不需要使用 sudo，因为脚本以 root 权限运行
-        apt-get update
-        
-        # 基础工具
-        apt-get install -y \
-          curl \
-          gnupg \
-          lsb-release \
-          pciutils \
-          net-tools \
-          iperf3 \
-          zip \
-          unzip \
-          iputils-ping \
-          vim \
-          iftop \
-          iotop \
-          mtr \
-          wget \
-          qrencode \
-          python3 \
-          python3-pip \
-          python3-venv
-          
-        # 检查并安装可用的网络时间协议工具
-        if apt-cache show ntpdate >/dev/null 2>&1; then
-            apt-get install -y ntpdate
-        elif apt-cache show ntpsec-ntpdate >/dev/null 2>&1; then
-            apt-get install -y ntpsec-ntpdate
-        fi
-        
-        # 检查并安装容器相关工具
-        if apt-cache show lxc >/dev/null 2>&1; then
-            apt-get install -y \
-              lxc \
-              lxc-templates \
-              bridge-utils
-        fi
-        
-        # sudo 通常已经安装，但确认一下
-        if ! command -v sudo >/dev/null 2>&1; then
-            apt-get install -y sudo
-        fi
-        
-        echo "系统自定义完成。"
-        EOF
-        
-        chmod +x userpatches/customize-image.sh
-
-    - name: 准备配置文件 (如果存在)
-      run: |
-        if [ -d "config" ]; then
-          cp -r config/* build/config/
-        fi
         
     - name: 设置构建参数
       run: |
