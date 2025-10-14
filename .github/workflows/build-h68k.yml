@@ -68,7 +68,16 @@ jobs:
           xargs -a <(curl -fsSL https://is.gd/depend_ubuntu2204_armbian) \
             sudo apt-get install -y --no-install-recommends
           sudo apt-get clean
-          sudo systemctl start docker
+          sudo apt-get purge -y docker-ce docker-ce-cli docker-ce-rootless-extras docker-compose-plugin
+          sudo rm -rf /var/lib/docker
+          sudo rm -rf /var/lib/containerd
+          sudo rm -rf /etc/docker
+          sudo rm -rf ~/.docker
+          sudo groupdel docker
+          sudo apt-get autoremove -y
+          sudo apt-get autoclean
+          which docker
+          docker --version
 
       - name: 2、克隆编译仓库
         run: |
