@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       board:
-        description: '开发板型号'
+        description: '选择开发板的型号'
         type: choice
         default: hinlink-h68k
         options: &boardOpts
@@ -15,14 +15,14 @@ on:
           - hinlink-hnas
           - hinlink-ht2
       branch:
-        description: '选择Armbian 分支'
+        description: '选择Armbian的分支'
         type: choice
         default: current
         options: &branchOpts
           - current
           - edge
       release:
-        description: '选择发行版'
+        description: '选择你想要编译哪一种Linux发行版'
         type: choice
         default: trixie
         options: &relOpts
@@ -44,7 +44,7 @@ on:
           - 'yes'
           - 'no'
       build_minimal:
-        description: '是否需要构建最小化系统？'
+        description: '是否需要构建最小化CLI系统?如果不选,默认构建预装标准应用程序的无桌面CLI服务器版本。'
         type: choice
         default: 'no'
         options: &boolOpts
@@ -62,10 +62,7 @@ jobs:
     name: ${{ inputs.board }} · ${{ inputs.branch }} · ${{ inputs.release }}
 
     steps:
-      - name: 签出当前仓库代码
-        uses: actions/checkout@v4
-
-      - name: 安装系统依赖
+      - name: 1、安装系统依赖
         run: |
           sudo apt-get update -qq
           xargs -a <(curl -fsSL https://is.gd/depend_ubuntu2204_armbian) \
@@ -73,11 +70,11 @@ jobs:
           sudo apt-get clean
           sudo systemctl start docker
 
-      - name: 先克隆编译仓库
+      - name: 2、克隆编译仓库
         run: |
-          git clone --depth=1 --branch=main https://github.com/armbian/build.git build
+          git clone https://github.com/armbian/build.git
           
-      - name: 生成环境变量
+      - name: 3、生成环境变量
         run: |
           {
             echo "BOARD=${{ inputs.board }}"
@@ -88,10 +85,10 @@ jobs:
             echo "KERNEL_CONFIGURE=${{ inputs.kernel_configure }}"
           } >> "$GITHUB_ENV"
 
-      - name: 编译
+      - name: 4、编译armbian
         working-directory: build
         run: |
-          ./compile.sh build \
+          ./compile.sh \
             BOARD="${BOARD}" \
             BRANCH="${BRANCH}" \
             RELEASE="${RELEASE}" \
@@ -99,30 +96,33 @@ jobs:
             BUILD_MINIMAL="${BUILD_MINIMAL}" \
             KERNEL_CONFIGURE="${KERNEL_CONFIGURE}"
             
-      - name: 本地极限压缩
+      - name: 5、本地极限压缩
         working-directory: build/output
         run: |
-          # 安装 pixz（多线程 xz）或回退 xz
+          # 安装 pixz(多线程 xz)或回退 xz
           sudo apt-get update -qq && sudo apt-get install -y pixz || true
-          
+
+          # 保护：目录必须存在且非空
           # 打包 + 极限压缩
-          if command -v pixz >/dev/null; then
-            tar -I 'pixz -9' -cf images.tar.xz images/
-          else
-            tar -cJf images.tar.xz images/
+          if [ ! -d images ] || [ -z "$(ls -A images)" ]; then
+            echo "::error::❌ images 目录为空，编译可能失败"
+            exit 1
           fi
-          
+          tar -I 'pixz -9' -cf images.tar.xz images/
+
           # 校验大小
           ls -lh images.tar.xz
           
-      - name: 上传单文件
+      - name: 6、上传单文件
         uses: actions/upload-artifact@v4
         with:
           name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}-images.tar.xz
           path: build/output/images.tar.xz
           retention-days: 7
 
-      - name: 清理
+      - name: 7、清理
         if: always()
         run: |
-          sudo rm -rf build/output/debs build/cache/root build/cache/sources
+          # 保留 ccache 下次复用，只删超大但可重新下载的源码包
+          sudo rm -rf build/cache/sources build/output/debs
+          # 如果你想连 ccache 也清，再写 build/cache/ccache
