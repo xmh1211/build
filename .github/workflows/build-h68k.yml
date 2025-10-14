@@ -75,13 +75,13 @@ jobs:
     - name: 检出代码
       uses: actions/checkout@v4
        
-#    - name: 安装依赖
-#      run: |
-#        sudo apt update -y
-#        sudo apt full-upgrade -y
-#        sudo apt install $(curl -fsSL https://is.gd/depend_ubuntu2204_armbian)
-#        sudo apt autoremove --purge
-#        sudo apt clean
+    - name: 安装依赖
+      run: |
+        sudo apt update -y
+        sudo apt full-upgrade -y
+        sudo apt install $(curl -fsSL https://is.gd/depend_ubuntu2204_armbian)
+        sudo apt autoremove --purge
+        sudo apt clean
 
     - name: 安装最新 Docker（可选）
       run: |
