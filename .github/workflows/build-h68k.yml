@@ -7,7 +7,7 @@ on:
         description: '开发板型号'
         type: choice
         default: hinlink-h68k
-        options: &boardOpts          # 锚点挪到上一行
+        options: &boardOpts
           - hinlink-h28k
           - hinlink-h66k
           - hinlink-h68k
@@ -18,7 +18,7 @@ on:
         description: 'Armbian 分支'
         type: choice
         default: current
-        options: &branchOpts         # 同理
+        options: &branchOpts
           - current
           - edge
       release:
@@ -47,26 +47,16 @@ on:
         description: '构建最小化系统'
         type: choice
         default: 'yes'
-        options: *boolOpts            # 合并语法保持不变
+        options: *boolOpts
       kernel_configure:
         description: '配置内核'
         type: choice
         default: 'no'
         options: *boolOpts
 
-# 全局环境变量：一次性把输入全转大写，后面直接引用
-env:
-  BOARD:          ${{ inputs.board }}
-  BRANCH:         ${{ inputs.branch }}
-  RELEASE:        ${{ inputs.release }}
-  BUILD_DESKTOP:  ${{ inputs.build_desktop }}
-  BUILD_MINIMAL:  ${{ inputs.build_minimal }}
-  KERNEL_CONFIGURE:${{ inputs.kernel_configure }}
-
 jobs:
   build:
     runs-on: ubuntu-22.04
-    # 给 GitHub 在线日志加中文名字
     name: ${{ inputs.board }} · ${{ inputs.branch }} · ${{ inputs.release }}
 
     steps:
@@ -78,13 +68,12 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update -qq
-          # 一次性装好 Armbian 官方依赖列表
           xargs -a <(curl -fsSL https://is.gd/depend_ubuntu2204_armbian) \
             sudo apt-get install -y --no-install-recommends
           sudo apt-get clean
-          sudo systemctl start docker   # 确保 docker daemon 已启
+          sudo systemctl start docker
 
-      # ---------- 3. 缓存 Armbian 构建系统 ----------
+      # ---------- 3. 缓存 Armbian 框架 ----------
       - name: Cache Armbian build framework
         id: cache-armbian
         uses: actions/cache@v4
@@ -99,27 +88,39 @@ jobs:
         run: |
           git clone --depth=1 --branch=main https://github.com/armbian/build.git build
 
-      # ---------- 4. 真正编译 ----------
+      # ---------- 4. 生成环境变量 ----------
+      - name: Generate build variables
+        run: |
+          {
+            echo "BOARD=${{ inputs.board }}"
+            echo "BRANCH=${{ inputs.branch }}"
+            echo "RELEASE=${{ inputs.release }}"
+            echo "BUILD_DESKTOP=${{ inputs.build_desktop }}"
+            echo "BUILD_MINIMAL=${{ inputs.build_minimal }}"
+            echo "KERNEL_CONFIGURE=${{ inputs.kernel_configure }}"
+          } >> "$GITHUB_ENV"
+
+      # ---------- 5. 编译 ----------
       - name: Compile Armbian
         working-directory: build
         run: |
           ./compile.sh build \
-            BOARD=${BOARD} \
-            BRANCH=${BRANCH} \
-            RELEASE=${RELEASE} \
-            BUILD_DESKTOP=${BUILD_DESKTOP} \
-            BUILD_MINIMAL=${BUILD_MINIMAL} \
-            KERNEL_CONFIGURE=${KERNEL_CONFIGURE}
+            BOARD="${BOARD}" \
+            BRANCH="${BRANCH}" \
+            RELEASE="${RELEASE}" \
+            BUILD_DESKTOP="${BUILD_DESKTOP}" \
+            BUILD_MINIMAL="${BUILD_MINIMAL}" \
+            KERNEL_CONFIGURE="${KERNEL_CONFIGURE}"
 
-      # ---------- 5. 上传 ----------
+      # ---------- 6. 上传 ----------
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}
           path: build/output/images/*.img.*
-          retention-days: 7          # 节约 GitHub 存储，7 天后自动删
+          retention-days: 7
 
-      # ---------- 6. 后置清理 ----------
+      # ---------- 7. 清理 ----------
       - name: Post cleanup
         if: always()
         run: |
