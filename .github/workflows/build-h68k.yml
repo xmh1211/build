@@ -4,29 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       board:
+        description: '开发板型号'
         type: choice
-        description: '开发板型号 (hinlink-h68k)'
-        options:
+        options: &boardOpts
           - hinlink-h28k
           - hinlink-h66k
           - hinlink-h68k
           - hinlink-h88k
           - hinlink-hnas
           - hinlink-ht2
-        required: true
-        default: 'hinlink-h68k'
+        default: hinlink-h68k
       branch:
+        description: 'Armbian 分支'
         type: choice
-        description: 'Armbian 分支 (如: current, edge)'
-        options:
-          - current
-          - edge
-        required: true
-        default: 'current'
+        options: &branchOpts [current, edge]
+        default: current
       release:
+        description: '发行版'
         type: choice
-        description: '发行版 (如: bookworm, bullseye, buster, focal, jammy, noble, oracular, plucky, sid, trixie)'
-        options:
+        options: &relOpts
           - bookworm
           - bullseye
           - buster
@@ -37,116 +33,90 @@ on:
           - plucky
           - sid
           - trixie
-        required: true
-        default: 'trixie'
+        default: trixie
       build_desktop:
+        description: '构建桌面版'
         type: choice
-        description: '是否构建桌面版 (yes/no)'
-        options:
-          - 'yes'
-          - 'no'
-        required: true
-        default: 'no'
+        options: &boolOpts [yes, no]
+        default: no
       build_minimal:
+        description: '构建最小化系统'
         type: choice
-        description: '是否构建最小化系统 (yes/no)'
-        options:
-          - 'yes'
-          - 'no'
-        required: true
-        default: 'yes'
+        options: *boolOpts
+        default: yes
       kernel_configure:
+        description: '配置内核'
         type: choice
-        description: '是否配置内核 (yes/no)'
-        options:
-          - 'yes'
-          - 'no'
-        required: true
-        default: 'no'
+        options: *boolOpts
+        default: no
 
+# 全局环境变量：一次性把输入全转大写，后面直接引用
 env:
-  BUILD_ARGS: ""
+  BOARD:          ${{ inputs.board }}
+  BRANCH:         ${{ inputs.branch }}
+  RELEASE:        ${{ inputs.release }}
+  BUILD_DESKTOP:  ${{ inputs.build_desktop }}
+  BUILD_MINIMAL:  ${{ inputs.build_minimal }}
+  KERNEL_CONFIGURE:${{ inputs.kernel_configure }}
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    
+    # 给 GitHub 在线日志加中文名字
+    name: ${{ inputs.board }} · ${{ inputs.branch }} · ${{ inputs.release }}
+
     steps:
-    - name: 检出代码
-      uses: actions/checkout@v4
-       
-    - name: 安装依赖
-      run: |
-        sudo apt-get update -y
-        sudo apt-get full-upgrade -y
-        sudo apt-get install $(curl -fsSL https://is.gd/depend_ubuntu2204_armbian)
-        sudo apt-get autoremove --purge
-        sudo apt-get clean
+      # ---------- 1. 代码 ----------
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: 安装最新 Docker（可选）
-      run: |
-        set -e
-        # 1. 卸载 runner 自带的旧包（可选）
-        sudo apt-get-get remove -y docker docker-engine docker.io containerd runc || true
-        # 2. 装官方仓库
-        sudo apt-get-get update
-        sudo apt-get-get install -y ca-certificates curl gnupg lsb-release
-        sudo mkdir -p /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-        sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-        echo \
-          "deb [arch=$(dpkg --print-architecture) \
-          signed-by=/etc/apt/keyrings/docker.gpg] \
-          https://download.docker.com/linux/ubuntu \
-          $(lsb_release -cs) stable" | \
-          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+      # ---------- 2. 系统依赖 ----------
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          # 一次性装好 Armbian 官方依赖列表
+          xargs -a <(curl -fsSL https://is.gd/depend_ubuntu2204_armbian) \
+            sudo apt-get install -y --no-install-recommends
+          sudo apt-get clean
+          sudo systemctl start docker   # 确保 docker daemon 已启
 
-        # 3. 安装 engine + cli + buildx + compose v2
-        sudo apt-get-get update
-        sudo apt-get-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      # ---------- 3. 缓存 Armbian 构建系统 ----------
+      - name: Cache Armbian build framework
+        id: cache-armbian
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: armbian-framework-${{ hashFiles('build/.git/refs/heads/main') }}
+          restore-keys: |
+            armbian-framework-
 
-        # 4. 启动并加入组（runner 默认已在 docker 组，可省）
-        sudo systemctl enable --now docker
-        docker version
-        docker buildx version
-        docker compose version
-    
-    - name: 克隆 Armbian 构建系统
-      run: |
-        git clone --single-branch --depth=1 --branch=main https://github.com/armbian/build.git build
-        
-    - name: 设置构建参数
-      run: |
-        cd build
-        # 设置构建参数，使用正确的默认值
-        echo "BOARD=${{ github.event.inputs.board || 'hinlink-h68k' }}" >> $GITHUB_ENV
-        echo "BRANCH=${{ github.event.inputs.branch || 'current' }}" >> $GITHUB_ENV
-        echo "RELEASE=${{ github.event.inputs.release || 'trixie' }}" >> $GITHUB_ENV
-        echo "BUILD_DESKTOP=${{ github.event.inputs.build_desktop || 'no' }}" >> $GITHUB_ENV
-        echo "BUILD_MINIMAL=${{ github.event.inputs.build_minimal || 'yes' }}" >> $GITHUB_ENV
-        echo "KERNEL_CONFIGURE=${{ github.event.inputs.kernel_configure || 'no' }}" >> $GITHUB_ENV
-        
-    - name: 编译 Armbian
-      run: |
-        cd build
-        # 开始编译，使用新的命令格式
-        ./compile.sh build \
-          BOARD=${{ env.BOARD }} \
-          BRANCH=${{ env.BRANCH }} \
-          RELEASE=${{ env.RELEASE }} \
-          BUILD_DESKTOP=${{ env.BUILD_DESKTOP }} \
-          BUILD_MINIMAL=${{ env.BUILD_MINIMAL }} \
-          KERNEL_CONFIGURE=${{ env.KERNEL_CONFIGURE }} \
-          ${{ env.BUILD_ARGS }}
-          
-    - name: 上传构建产物
-      uses: actions/upload-artifact@v4
-      with:
-        name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}
-        path: build/output/images/
-        
-    - name: 清理缓存 (可选)
-      if: always()
-      run: |
-        sudo rm -rf build/cache
-        sudo rm -rf build/output/debs
+      - name: Clone Armbian build framework
+        if: steps.cache-armbian.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 --branch=main https://github.com/armbian/build.git build
+
+      # ---------- 4. 真正编译 ----------
+      - name: Compile Armbian
+        working-directory: build
+        run: |
+          ./compile.sh build \
+            BOARD=${BOARD} \
+            BRANCH=${BRANCH} \
+            RELEASE=${RELEASE} \
+            BUILD_DESKTOP=${BUILD_DESKTOP} \
+            BUILD_MINIMAL=${BUILD_MINIMAL} \
+            KERNEL_CONFIGURE=${KERNEL_CONFIGURE}
+
+      # ---------- 5. 上传 ----------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}
+          path: build/output/images/*.img.*
+          retention-days: 7          # 节约 GitHub 存储，7 天后自动删
+
+      # ---------- 6. 后置清理 ----------
+      - name: Post cleanup
+        if: always()
+        run: |
+          sudo rm -rf build/output/debs build/cache/root build/cache/sources
