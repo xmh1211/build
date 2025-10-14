@@ -6,22 +6,25 @@ on:
       board:
         description: '开发板型号'
         type: choice
-        options: &boardOpts
+        default: hinlink-h68k
+        options: &boardOpts          # 锚点挪到上一行
           - hinlink-h28k
           - hinlink-h66k
           - hinlink-h68k
           - hinlink-h88k
           - hinlink-hnas
           - hinlink-ht2
-        default: hinlink-h68k
       branch:
         description: 'Armbian 分支'
         type: choice
-        options: &branchOpts [current, edge]
         default: current
+        options: &branchOpts         # 同理
+          - current
+          - edge
       release:
         description: '发行版'
         type: choice
+        default: trixie
         options: &relOpts
           - bookworm
           - bullseye
@@ -33,22 +36,23 @@ on:
           - plucky
           - sid
           - trixie
-        default: trixie
       build_desktop:
         description: '构建桌面版'
         type: choice
-        options: &boolOpts [yes, no]
-        default: no
+        default: 'no'
+        options: &boolOpts
+          - 'yes'
+          - 'no'
       build_minimal:
         description: '构建最小化系统'
         type: choice
-        options: *boolOpts
-        default: yes
+        default: 'yes'
+        options: *boolOpts            # 合并语法保持不变
       kernel_configure:
         description: '配置内核'
         type: choice
+        default: 'no'
         options: *boolOpts
-        default: no
 
 # 全局环境变量：一次性把输入全转大写，后面直接引用
 env:
