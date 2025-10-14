@@ -46,8 +46,10 @@ on:
       build_minimal:
         description: '是否需要构建最小化系统？'
         type: choice
-        default: 'yes'
-        options: *boolOpts
+        default: 'no'
+        options: &boolOpts
+          - 'yes'
+          - 'no'
       kernel_configure:
         description: '是否需要配置内核？'
         type: choice
@@ -60,12 +62,10 @@ jobs:
     name: ${{ inputs.board }} · ${{ inputs.branch }} · ${{ inputs.release }}
 
     steps:
-      # ---------- 1. 代码 ----------
-      - name: Checkout
+      - name: 签出当前仓库代码
         uses: actions/checkout@v4
 
-      # ---------- 2. 系统依赖 ----------
-      - name: Install system deps
+      - name: 安装系统依赖
         run: |
           sudo apt-get update -qq
           xargs -a <(curl -fsSL https://is.gd/depend_ubuntu2204_armbian) \
@@ -73,25 +73,11 @@ jobs:
           sudo apt-get clean
           sudo systemctl start docker
 
-      # ---------- 3. 先克隆 ----------
-      - name: Clone Armbian build framework
-        if: steps.cache-armbian.outputs.cache-hit != 'true'
+      - name: 先克隆编译仓库
         run: |
           git clone --depth=1 --branch=main https://github.com/armbian/build.git build
           
-      # ---------- 4. 再缓存 ----------
-      - name: Cache Armbian build framework
-        id: cache-armbian
-        uses: actions/cache@v4
-        with:
-          path: build
-          key: armbian-framework-${{ hashFiles('build/.git/refs/heads/main') }}
-          restore-keys: |
-            armbian-framework-
-        if: hashFiles('build/.git/refs/heads/main') != ''
-        
-      # ---------- 5. 生成环境变量 ----------
-      - name: Generate build variables
+      - name: 生成环境变量
         run: |
           {
             echo "BOARD=${{ inputs.board }}"
@@ -102,8 +88,7 @@ jobs:
             echo "KERNEL_CONFIGURE=${{ inputs.kernel_configure }}"
           } >> "$GITHUB_ENV"
 
-      # ---------- 6. 编译 ----------
-      - name: Compile Armbian
+      - name: 编译
         working-directory: build
         run: |
           ./compile.sh build \
@@ -113,17 +98,31 @@ jobs:
             BUILD_DESKTOP="${BUILD_DESKTOP}" \
             BUILD_MINIMAL="${BUILD_MINIMAL}" \
             KERNEL_CONFIGURE="${KERNEL_CONFIGURE}"
-
-      # ---------- 7. 上传 ----------
-      - name: Upload artifacts
+            
+      - name: 本地极限压缩
+        working-directory: build/output
+        run: |
+          # 安装 pixz（多线程 xz）或回退 xz
+          sudo apt-get update -qq && sudo apt-get install -y pixz || true
+          
+          # 打包 + 极限压缩
+          if command -v pixz >/dev/null; then
+            tar -I 'pixz -9' -cf images.tar.xz images/
+          else
+            tar -cJf images.tar.xz images/
+          fi
+          
+          # 校验大小
+          ls -lh images.tar.xz
+          
+      - name: 上传单文件
         uses: actions/upload-artifact@v4
         with:
-          name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}
-          path: build/output/images/
+          name: armbian-${{ env.BOARD }}-${{ env.RELEASE }}-images.tar.xz
+          path: build/output/images.tar.xz
           retention-days: 7
 
-      # ---------- 8. 清理 ----------
-      - name: Post cleanup
+      - name: 清理
         if: always()
         run: |
           sudo rm -rf build/output/debs build/cache/root build/cache/sources
